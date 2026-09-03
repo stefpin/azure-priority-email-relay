@@ -1,0 +1,28 @@
+# secrets and local config - never commit these
+*.env
+.env
+*.pfx
+*.key
+*.pem
+appsettings.*.json
+local.settings.json
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# node
+node_modules/
+
+# office and generated documents - kept out of source control deliberately
+*.docx
+*.pptx
+*.pdf
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
