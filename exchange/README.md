@@ -30,13 +30,15 @@ are usually separated by relay hostname at the application tier anyway.
 | 04 | `04-status.ps1` | the VM | Poll during the roughly 40 minute install. |
 | 11 | `11-receive.ps1` | the VM | Restricts the receive connector, **then** grants relay. |
 | 11a | `11a-send-connector.ps1` | the VM | The connector to ACS. Needs `ACS_SMTP_USER` / `ACS_SMTP_PASSWORD`. |
+| 11b | `11b-antispam-bypass.ps1` | the VM | **Do not skip.** Exempts your sending domain from content filtering. Needs `SENDER_DOMAIN`. See below. |
 | 08 | `08-verify.ps1` | the VM | Services, version, role, edition. |
 | 12 | `12-track.ps1` | the VM | Queues and message tracking. |
+| 20 | `20-agentlog.ps1` | the VM | Anti-spam agent log. Run this first when a message vanishes. |
 
 The remaining numbered scripts (05, 07, 09, 10, 13–19) are read-only diagnostics and
 recovery helpers used while debugging. They are safe to run at any time.
 
-## Three things that will stop you
+## Four things that will stop you
 
 **Setup cannot run as SYSTEM.** Edge Transport creates an AD LDS instance during
 setup, and AD LDS needs a real user account as its administrator. `az vm run-command`
@@ -51,6 +53,20 @@ not clear it. Run `03a-clear-setup-watermark.ps1` first.
 **Visual C++ 2012 Redistributable is required and is not on the ISO.** Setup fails its
 prerequisite check without it. Install it before anything else.
 
+**The content filter rejects one-time passcodes, silently.** Edge Transport enables all
+ten anti-spam agents by default and exempts nothing. A passcode message — a very short
+body containing a numeric code, from a domain the filter has not seen — can score SCL 7,
+which is the default reject threshold, and Exchange refuses it at `OnEndOfData`:
+
+```
+550 5.7.1 Message rejected as spam by Content Filtering.
+```
+
+What makes this one genuinely dangerous is that a typical Python sending script prints
+`submitted` and exits 0, because it never checks the SMTP result — the exception only
+reaches stderr. The message tracking log holds a lone `FAIL` with no `RECEIVE` and no
+`SENDEXTERNAL`. Run `11b-antispam-bypass.ps1` at build time and this never happens.
+
 ## Two things that look like failures but are not
 
 **The setup log is full of "The LDAP server is unavailable."** Harmless. Edge uses
@@ -61,6 +77,22 @@ completely successful install. Judge success by setup exit code 0 and by the eig
 **`Get-MessageTrackingLog` returns nothing.** On an Edge server you must pass
 `-Server <name>`. The outbound event is also called `SENDEXTERNAL`, not `SEND`, so
 filtering on `SEND` returns an empty result even when mail was delivered perfectly.
+
+## When a message vanishes
+
+The sending script reported success and nothing arrived. In order:
+
+1. **Read stderr, not just stdout.** A `smtplib.SMTPDataError: (550, ...)` there means
+   the send failed regardless of what the script printed.
+2. **`12-track.ps1`** — a healthy message shows `RECEIVE` then `SENDEXTERNAL`. A lone
+   `FAIL` means it was refused before it was ever queued.
+3. **`20-agentlog.ps1`** — names the agent, the action and the score. `RejectMessage`
+   with `SclAtOrAboveRejectThreshold` is the content filter.
+4. **`11b-antispam-bypass.ps1`** — apply the exemption, then send again.
+
+A successful bypass appears in the agent log as `Action: AcceptMessage` with
+`ReasonData: not available: content filtering was bypassed.` That wording is the
+positive confirmation; an empty agent log on a clean run is also normal.
 
 ## Do not build an open relay
 

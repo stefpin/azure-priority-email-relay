@@ -62,6 +62,13 @@ the shared Redis bucket exists.
 address space and cost. `RouteMessageOutboundConnector` is Exchange Online only. Splitting
 lanes by sender therefore needs one Edge Transport server per lane.
 
+**Edge Transport's content filter rejects one-time passcodes.** All ten anti-spam agents
+are on by default with nothing exempt. A short message whose body is a numeric code, from
+an unfamiliar sending domain, can score SCL 7 — the default reject threshold — and be
+refused with `550 5.7.1`. The send appears to succeed because the error surfaces only on
+stderr. `exchange/11b-antispam-bypass.ps1` exempts the sending domain while leaving
+filtering enabled for everything else.
+
 **ACS Email logging covers SMTP submissions too.** Microsoft documents the REST path but
 does not state whether SMTP submissions produce the same telemetry. They do — both appear
 identically in `ACSEmailSendMailOperational` and `ACSEmailStatusUpdateOperational`.
